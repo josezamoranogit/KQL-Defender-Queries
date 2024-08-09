@@ -3,10 +3,10 @@
 //This alert is great for pulling AADsign ins, non-interactive and interactive as well as cloudapp events (teams, office)
 //This will show you a logon followed by action performed on cloud app, like opening an email. Great for investigating sign in alerts.
 <br></br>
-let userName = "Enter username here"
-AADSignInEventsBeta
-| where AccountDisplayNamej contains userName
-|union
+let userName = "Enter username here" \n
+AADSignInEventsBeta \n
+| where AccountDisplayNamej contains userName \n
+|union \n
 CloudAppEvents
 | where AccountDisplayName contains userName
 | sort by Timestamp desc
