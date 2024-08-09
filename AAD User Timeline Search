@@ -1,8 +1,0 @@
-//This Query will pull a users activity timeline in Azure. It shows interactive and non interactive sign ins as well as other useful information (see line 7).
-//This only works if you have Azure AD
-AADSignInEventsBeta
-//CloudAppEvents
-//Comment out line 2 and remove comments from line 3 to see what the user was doing via cloud app events for example: opening email.
-| where AccountDisplayName contains ""
-| project Timestamp, Application,LogonType, AccountDisplayName, AccountUPN, UserAgent, ClientAppUsed, IPAddress, Country, State, City, AuthenticationRequirement, DeviceName, OSPlatform, DeviceTrustType, AADDeviceID
-| sort by Timestamp desc
