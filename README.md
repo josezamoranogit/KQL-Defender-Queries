@@ -1,6 +1,9 @@
 //Title: AAD User Activity Timeline Query
+<br></br>
 //This alert is great for pulling AADsign ins, non-interactive and interactive as well as cloudapp events (teams, office)
+<br></br>
 //This will show you a logon followed by action performed on cloud app, like opening an email. Great for investigating sign in alerts.
+<br></br>
 let userName = "Enter username here"
 AADSignInEventsBeta
 | where AccountDisplayNamej contains userName
