@@ -5,7 +5,7 @@
 <br></br>
 let userName = "Enter username here" <br>
 AADSignInEventsBeta <br>
-| where AccountDisplayNamej contains userName <br>
+| where AccountDisplayName contains userName <br>
 |union <br>
 CloudAppEvents <br>
 | where AccountDisplayName contains userName <br> 
