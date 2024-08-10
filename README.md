@@ -57,7 +57,7 @@ let foundResults = <br>
 	queryResults <br>
 	| join kind=inner (DeviceNetworkEvents) on $left.RemoteIP == $right.RemoteIP <br>
 	| project IP = RemoteIP, Found = "found", RemoteIP = RemoteIP, RemoteURL = RemoteURL; <br>
-union notFoundResults, foundResults <br>
+| union notFoundResults, foundResults <br>
 | project IP, Found, RemoteIP, RemoteURL <br>
 | distinct RemoteIP, RemoteURL, Found, IP <br>
 <br></br>
