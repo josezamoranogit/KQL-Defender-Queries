@@ -45,7 +45,7 @@ let queryResults = <br>
 	| where RemoteIP in (listofIPs) <br> 
 	| extend RemoteURL = replace_regex(RemoteURL,@"^(https?://)?", "") <br>
 	| where RemoteUrl != "" <br>
-	| distinct RemoteIP, RemoteURL <br>
+	| distinct RemoteIP, RemoteURL; <br>
 let probeResults= <br>
 	range IPIndex from 0 to array_length(listofIPs) -1 step 1 <br>
 	| extend IP = tostring (listofIPs[IPIndex]); <br>
