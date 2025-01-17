@@ -26,6 +26,85 @@ lowPrevalenceSoftware<br>
 | where InitiatingProcessAccountName != @"system" //This tunes out A LOT of updates, patches, drivers, etc, I want to see when people are manually installing software..<br>
 <br></br>
 <br></br>
+## Title: Detect Encoded Powershell
+<br></br>
+//Find encoded PowerShell commands and then decodes the encoded command<br>
+//Query modified from this post - https://techcommunity.microsoft.com/t5/microsoft-sentinel/finding-base64-encoded-commands/m-p/1891876<br>
+//<br>
+// (When the alert was created there were 3 results in last 30 days keep this in mind for tuning)<br>
+//<br>
+//Creating arrays to define what will be excluded in the results to get rid of the noise/expected encoded commands in our environment. Add more values here to "Tune" them out.<br>
+let cleanedencodedcmdexclusions = dynamic([@"tuneencodedpowershellcommands"]);<br>
+let initiatingprocesscmdlineexclusions = dynamic(["excludeexecutables"]);<br>
+DeviceProcessEvents<br>
+//Looking for process command lines including powershell and the encodedcommand parameter.<br>
+| where ProcessCommandLine contains "powershell" or InitiatingProcessCommandLine contains "powershell"<br>
+| where ProcessCommandLine contains "-enc"<br>
+    or ProcessCommandLine contains "-encodedcommand"<br>
+    or InitiatingProcessCommandLine contains "-enc"<br>
+    or InitiatingProcessCommandLine contains "-encodedcommand"<br>
+//Extract encoded command using regex<br>
+//This query will only return results when the command can be matched via regex and decoded, if you run only the above lines it will return all encoded commands without attempting to match and decode<br>
+| extend EncodedCommand = extract(@'\s+([A-Za-z0-9+/]{20}\S+$)', 1, ProcessCommandLine)<br>
+| where EncodedCommand != ""<br>
+//If you do not remove the null bytes it will be jumbled garbage. That is why the replace string is used here to replace null bytes.<br>
+| extend CleanedCommand = replace_string(base64_decode_tostring(EncodedCommand), "\0", "")<br>
+| where CleanedCommand != ""<br>
+//Using the arrays on line 7/8 and referencing them to remove annoying garbage.<br>
+| where not (InitiatingProcessCommandLine has_any (initiatingprocesscmdlineexclusions))<br>
+| where not (CleanedCommand has_any (cleanedencodedcmdexclusions))<br>
+//Projecting desired columns, more can be added/removed as desired.<br>
+| project<br>
+    Timestamp,<br>
+    DeviceId,<br>
+    DeviceName,<br>
+    ReportId,<br>
+    InitiatingProcessAccountName,<br>
+    InitiatingProcessCommandLine,<br>
+    ProcessCommandLine,<br>
+    EncodedCommand,<br>
+    CleanedCommand<br>
+<br></br>
+<br></br>
+## Title: Detect DLL Loading from Unusual Location
+<br></br>
+//This detection has been created to find DLL sideloading. If it has been filtered out (hashes below) please do not assume it is legitimate activity as the tuned DLLs could be an attacker leveraging the vulnerable software loading DLLs from unusual locations.<br>
+//Updates to software below could cause multiple alerts to fire....<br>
+//<br>
+//<br>
+//Unusual locations where DLLs may be loaded from. <br>
+let uncommonDirectories = dynamic([ <br>
+    "C:\\Users\\.*\\AppData\\Roaming", <br>
+    "C:\\Users\\.*\\AppData\\LocalLow", <br>
+    "C:\\Windows\\Temp", <br>
+    "C:\\Users\\.*\\AppData\\Local\\Temp", <br>
+    "C:\\Temp", <br>
+    "\\\\.*\\\\SharedFolder", <br>
+    "C:\\Windows\\System32\\Tasks", <br>
+    "C:\\Users\\.*\\Documents\\.hidden"<br>
+]);<br>
+//filterOutSHA1 >> Tuned out hashes for low or empty GlobalPrevalence fields, if you see an event fire for any of these DLL's that have been "tuned out" with a different hash, verify if it is malicious before proceeding as attackers leverage vulnerable software that<br>
+loads DLLs from unprotected locations like Temp or User profile.<br>
+let filterOutSHA1 = dynamic(["enterhashhere"]);<br>
+let filterOutSoftwareName = dynamic(["allowedsoftwarehere"]);<br>
+//This table looks for loaded DLLs<br>
+DeviceImageLoadEvents<br>
+//Checking the folder paths below and referencing that array we created called uncommonDirectories<br>
+| where FolderPath matches regex @"\\\\.*\\\\SharedFolder" or FolderPath in (uncommonDirectories)<br>
+//Tuned out hashes here from filterOutSHA1 array.<br>
+| where SHA1 !in (filterOutSHA1)<br>
+| where InitiatingProcessCommandLine !in (filterOutSoftwareName)<br>
+//Making sure we are getting Dlls<br>
+| where FileName endswith ".dll"<br>
+//FileProfile() can be found in the functions tab, essentially there are some good fields we can pull from this like "SignatureState", "GlobalPrevalence", etc.<br>
+| invoke FileProfile()<br>
+//Looking for anything unsigned of course.<br>
+| where SignatureState == "Unsigned"<br>
+//Filtering out DLLs that are popular globally as those are more than likely not malicious.<br>
+| where GlobalPrevalence  <= 1500 or isempty(GlobalPrevalence)<br>
+| project DeviceId, Timestamp, ReportId, DeviceName, ActionType, FileName, FolderPath, SHA1, SHA256, InitiatingProcessAccountName, InitiatingProcessFileName, InitiatingProcessParentFileName, InitiatingProcessCommandLine, GlobalPrevalence, SignatureState, SoftwareName, GlobalFirstSeen, GlobalLastSeen<br>
+<br></br>
+<br></br>
 ## Title: AAD User Activity Timeline Query
 <br></br>
 //This alert is great for pulling AADsign ins, non-interactive and interactive as well as cloudapp events (teams, office) <br> 
@@ -175,83 +254,5 @@ DeviceLogonEvents <br>
 | project Timestamp, DeviceName, AccountName, FailureReason, DeviceId, ActionType <br>
 | Summarize UsernameAttempts = count() by AccountName | where UsernameAttempts > 4 <br>
 | render piechart <br>
-<br></br>
-<br></br>
-## Title: Detect Encoded Powershell
-<br></br>
-//Find encoded PowerShell commands and then decodes the encoded command
-//Query modified from this post - https://techcommunity.microsoft.com/t5/microsoft-sentinel/finding-base64-encoded-commands/m-p/1891876
-//
-// (When the alert was created there were 3 results in last 30 days keep this in mind for tuning)
-//
-//Creating arrays to define what will be excluded in the results to get rid of the noise/expected encoded commands in our environment. Add more values here to "Tune" them out.
-let cleanedencodedcmdexclusions = dynamic([@"tuneencodedpowershellcommands"]);
-let initiatingprocesscmdlineexclusions = dynamic(["excludeexecutables"]);
-DeviceProcessEvents
-//Looking for process command lines including powershell and the encodedcommand parameter.
-| where ProcessCommandLine contains "powershell" or InitiatingProcessCommandLine contains "powershell"
-| where ProcessCommandLine contains "-enc"
-    or ProcessCommandLine contains "-encodedcommand"
-    or InitiatingProcessCommandLine contains "-enc"
-    or InitiatingProcessCommandLine contains "-encodedcommand"
-//Extract encoded command using regex
-//This query will only return results when the command can be matched via regex and decoded, if you run only the above lines it will return all encoded commands without attempting to match and decode
-| extend EncodedCommand = extract(@'\s+([A-Za-z0-9+/]{20}\S+$)', 1, ProcessCommandLine)
-| where EncodedCommand != ""
-//If you do not remove the null bytes it will be jumbled garbage. That is why the replace string is used here to replace null bytes.
-| extend CleanedCommand = replace_string(base64_decode_tostring(EncodedCommand), "\0", "")
-| where CleanedCommand != ""
-//Using the arrays on line 7/8 and referencing them to remove annoying garbage.
-| where not (InitiatingProcessCommandLine has_any (initiatingprocesscmdlineexclusions))
-| where not (CleanedCommand has_any (cleanedencodedcmdexclusions))
-//Projecting desired columns, more can be added/removed as desired.
-| project
-    Timestamp,
-    DeviceId,
-    DeviceName,
-    ReportId,
-    InitiatingProcessAccountName,
-    InitiatingProcessCommandLine,
-    ProcessCommandLine,
-    EncodedCommand,
-    CleanedCommand
-<br></br>
-<br></br>
-## Title: Detect DLL Loading from Unusual Location
-<br></br>
-//This detection has been created to find DLL sideloading. If it has been filtered out (hashes below) please do not assume it is legitimate activity as the tuned DLLs could be an attacker leveraging the vulnerable software loading DLLs from unusual locations.
-//Updates to software below could cause multiple alerts to fire....
-//
-//
-//Unusual locations where DLLs may be loaded from. 
-let uncommonDirectories = dynamic([ 
-    "C:\\Users\\.*\\AppData\\Roaming", 
-    "C:\\Users\\.*\\AppData\\LocalLow", 
-    "C:\\Windows\\Temp", 
-    "C:\\Users\\.*\\AppData\\Local\\Temp", 
-    "C:\\Temp", 
-    "\\\\.*\\\\SharedFolder", 
-    "C:\\Windows\\System32\\Tasks", 
-    "C:\\Users\\.*\\Documents\\.hidden"
-]);
-//filterOutSHA1 >> Tuned out hashes for low or empty GlobalPrevalence fields, if you see an event fire for any of these DLL's that have been "tuned out" with a different hash, verify if it is malicious before proceeding as attackers leverage vulnerable software that loads DLLs from unprotected locations like Temp or User profile.
-let filterOutSHA1 = dynamic(["enterhashhere"]);
-let filterOutSoftwareName = dynamic(["allowedsoftwarehere"]);
-//This table looks for loaded DLLs
-DeviceImageLoadEvents
-//Checking the folder paths below and referencing that array we created called uncommonDirectories
-| where FolderPath matches regex @"\\\\.*\\\\SharedFolder" or FolderPath in (uncommonDirectories)
-//Tuned out hashes here from filterOutSHA1 array.
-| where SHA1 !in (filterOutSHA1)
-| where InitiatingProcessCommandLine !in (filterOutSoftwareName)
-//Making sure we are getting Dlls
-| where FileName endswith ".dll"
-//FileProfile() can be found in the functions tab, essentially there are some good fields we can pull from this like "SignatureState", "GlobalPrevalence", etc.
-| invoke FileProfile()
-//Looking for anything unsigned of course.
-| where SignatureState == "Unsigned"
-//Filtering out DLLs that are popular globally as those are more than likely not malicious.
-| where GlobalPrevalence  <= 1500 or isempty(GlobalPrevalence)
-| project DeviceId, Timestamp, ReportId, DeviceName, ActionType, FileName, FolderPath, SHA1, SHA256, InitiatingProcessAccountName, InitiatingProcessFileName, InitiatingProcessParentFileName, InitiatingProcessCommandLine, GlobalPrevalence, SignatureState, SoftwareName, GlobalFirstSeen, GlobalLastSeen
 <br></br>
 <br></br>
