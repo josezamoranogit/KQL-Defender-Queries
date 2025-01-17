@@ -1,29 +1,29 @@
 ## Title: Detect Uncommon Software Installed
 <br></br>
-// Find uncommon/unauthorized software installs.
-// This query uses DeviceTvmSoftwareInventory to pull software inventory from all devices, count by softwarename and filter out high prevalence software (higher count software will more than likely be legitimate). This table is joined with "DeviceTvmSoftwareEvidenceBeta" to get the RegistrPath column. 
-// That column is then mapped to "Registry Key" from DeviceRegistryEvents to get the timestamp of when the software was installed. 
-//
-//
-//
-//
-let allowedSoftwareVendor = dynamic(["legitimatefile1", "legitimatefile2"]);  // Define allowed software vendors list
-let lowPrevalenceSoftware= (
-DeviceTvmSoftwareInventory
-| summarize SoftwarePrevalence = dcount(DeviceId) by SoftwareName  // Summarize by software name, sum the count up so we can trim out high prevalence software
-| where SoftwarePrevalence <= 100  // Optional: limit results to software installed on fewer devices, if its not allowed it will probably only be installed on few devices. //INCREASE THIS NUMBER TO TEST THE QUERY.
-| join DeviceTvmSoftwareEvidenceBeta on SoftwareName  // Join with DeviceTvmSoftwareEvidenceBeta on SoftwareName to get RegistryPaths
-| where RegistryPaths != "[]"  // Only include rows with non-empty registry paths, very few actionable columns to search for software installs this is the best column and if no data present there is no way to search anyway.
-| where not (SoftwareVendor has_any (allowedSoftwareVendor)) //remove comment on line 8
-| extend RegistryPathsString = tostring(RegistryPaths[0]) // Convert dynamic RegistryPaths to string for compatibility... Dont know why MS did not make it easier for us here... Pulling the first value (only) of the array.
-| project DeviceId, SoftwareVendor, SoftwareName, SoftwareVersion, RegistryPathsString, SoftwarePrevalence
-);
-lowPrevalenceSoftware
-| join kind=innerunique (DeviceRegistryEvents) on $left.RegistryPathsString==$right.RegistryKey //Because a common column name does not exist, I joined my custom column to RegistryKey from DeviceRegistryEvents.
-| where ActionType == "RegistryKeyCreated" //Only RegistryKeyCreations since an update to software can make registry modifications this helps narrow down software installs.
-| summarize Timestamp=min(Timestamp) by  DeviceName, SoftwareVendor, SoftwareName, RegistryPathsString, InitiatingProcessAccountName, InitiatingProcessFileName, SoftwarePrevalence, ReportId // This will show the oldest evidence of the software and all other columns must be unique (remove duplicates)
-| project Timestamp, DeviceName, SoftwareVendor, SoftwareName, RegistryPathsString, InitiatingProcessAccountName, InitiatingProcessFileName, SoftwarePrevalence, ReportId
-| where InitiatingProcessAccountName != @"system" //This tunes out A LOT of updates, patches, drivers, etc, I want to see when people are manually installing software..
+// Find uncommon/unauthorized software installs.<br>
+// This query uses DeviceTvmSoftwareInventory to pull software inventory from all devices, count by softwarename and filter out high prevalence software (higher count software will more than likely be legitimate). This table is joined with<br> "DeviceTvmSoftwareEvidenceBeta" to get the RegistrPath column. <br>
+// That column is then mapped to "Registry Key" from DeviceRegistryEvents to get the timestamp of when the software was installed. <br>
+//<br>
+//<br>
+//<br>
+//<br>
+let allowedSoftwareVendor = dynamic(["legitimatefile1", "legitimatefile2"]);  // Define allowed software vendors list<br>
+let lowPrevalenceSoftware= (<br>
+DeviceTvmSoftwareInventory<br>
+| summarize SoftwarePrevalence = dcount(DeviceId) by SoftwareName  // Summarize by software name, sum the count up so we can trim out high prevalence software<br>
+| where SoftwarePrevalence <= 100  // Optional: limit results to software installed on fewer devices, if its not allowed it will probably only be installed on few devices. //INCREASE THIS NUMBER TO TEST THE QUERY.<br>
+| join DeviceTvmSoftwareEvidenceBeta on SoftwareName  // Join with DeviceTvmSoftwareEvidenceBeta on SoftwareName to get RegistryPaths<br>
+| where RegistryPaths != "[]"  // Only include rows with non-empty registry paths, very few actionable columns to search for software installs this is the best column and if no data present there is no way to search anyway.<br>
+| where not (SoftwareVendor has_any (allowedSoftwareVendor)) //remove comment on line 8<br>
+| extend RegistryPathsString = tostring(RegistryPaths[0]) // Convert dynamic RegistryPaths to string for compatibility... Dont know why MS did not make it easier for us here... Pulling the first value (only) of the array.<br>
+| project DeviceId, SoftwareVendor, SoftwareName, SoftwareVersion, RegistryPathsString, SoftwarePrevalence<br>
+);<br>
+lowPrevalenceSoftware<br>
+| join kind=innerunique (DeviceRegistryEvents) on $left.RegistryPathsString==$right.RegistryKey //Because a common column name does not exist, I joined my custom column to RegistryKey from DeviceRegistryEvents.<br>
+| where ActionType == "RegistryKeyCreated" //Only RegistryKeyCreations since an update to software can make registry modifications this helps narrow down software installs.<br>
+| summarize Timestamp=min(Timestamp) by  DeviceName, SoftwareVendor, SoftwareName, RegistryPathsString, InitiatingProcessAccountName, InitiatingProcessFileName, SoftwarePrevalence, ReportId // This will show the oldest evidence of the software and all other columns<br> must be unique (remove duplicates)<br>
+| project Timestamp, DeviceName, SoftwareVendor, SoftwareName, RegistryPathsString, InitiatingProcessAccountName, InitiatingProcessFileName, SoftwarePrevalence, ReportId<br>
+| where InitiatingProcessAccountName != @"system" //This tunes out A LOT of updates, patches, drivers, etc, I want to see when people are manually installing software..<br>
 <br></br>
 <br></br>
 ## Title: AAD User Activity Timeline Query
